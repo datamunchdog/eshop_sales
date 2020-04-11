@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 
-Eshop sales
+Top-rated (Metacritic) Switch games currently on sale in the Nintendo Eshop
 
 """
 
 # Import modules
+from bs4 import BeautifulSoup as bs
 import csv
 import json
 import math
 import requests
 import time
-
-import metacritic_switch as ms
 
 # Set User-Agent:
 user_agent = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.163 Safari/537.36'}
@@ -29,7 +28,48 @@ def post(url, payload):
     r = requests.post(url, headers=user_agent, data=payload)
     text = r.text
     return text
+
+# Metacritic Switch games data:
+# Metacritic URL:
+metacritic_url = 'https://www.metacritic.com/browse/games/release-date/available/switch/metascore?page={}'
+
+# Loop through first 'range(x) pages of Metacritic data:
+all_games = []
+for x in range(2):
+    html = get(metacritic_url.format(x))
+    soup = bs(html, 'html.parser')
+    first_game = soup.find('li', {'class': 'product game_product first_product'})
+    games = soup.find_all('li', {'class': 'product game_product'})
+    last_game = soup.find('li', {'class': 'product game_product last_product'})
+    games.extend([first_game, last_game])
+    all_games.extend(games)
+
+# Extract data of interest from raw HTML and add to 'metacritic_data' list:
+metacritic_data = []
+for game in all_games:
+    title = game.find('div', {'class': 'basic_stat product_title'})
+
+    if game.find('div', {'class': 'metascore_w small game positive'}):
+        metascore = game.find('div', {'class': 'metascore_w small game positive'})
+    else:
+        metascore = game.find('div', {'class': 'metascore_w small game mixed'})
+    if game.find('span', {'class': 'data textscore textscore_favorable'}):
+        user_score = game.find('span', {'class': 'data textscore textscore_favorable'})
+    else:
+        user_score = game.find('span', {'class': 'data textscore textscore_mixed'})
+
+
+    raw_data = {'title': title,'metascore': metascore,'user_score': user_score}
     
+    clean_data = {}
+    for k, v in raw_data.items():
+        try:
+            clean_data[k] = v.text.strip()
+        except:
+            clean_data[k] = '' 
+    metacritic_data.append(clean_data)
+ 
+# Eshop data scrape:
 # Get App ID, API Key:
 base_url = 'https://www.nintendo.com/games/game-guide/'
 
@@ -75,7 +115,6 @@ for sale in sale_list:
     clean_sale_list.append(data)
     
 # Metacritic data:  
-metacritic_data = ms.game_data
 meta_list = [each['title'] for each in metacritic_data]
 
 # Add only game sales in top 200/400/600/etc. to 'good_sales' list:
@@ -100,13 +139,3 @@ with open('eshop_sales.csv', 'w', newline='') as f:
     dict_writer = csv.DictWriter(f, keys)
     dict_writer.writeheader()
     dict_writer.writerows(good_sales)
-
-
-
-
-
-
-
-
-
-
